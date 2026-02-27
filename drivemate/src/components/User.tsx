@@ -7,7 +7,8 @@ import {
   Lock, Key, Eye, EyeOff, AlertCircle, MessageSquare, HelpCircle,
   Package, TrendingUp, BarChart, Users as UsersIcon, FileText,
   ShieldCheck, Globe, Smartphone, Wifi, Music, Thermometer,
-  Zap, Droplets, Wind, Sun, Moon, Smartphone as PhoneIcon
+  Zap, Droplets, Wind, Sun, Moon, Smartphone as PhoneIcon,
+  Download  // ADD THIS
 } from 'lucide-react';
 
 // Types
@@ -1631,6 +1632,8 @@ const Header: React.FC<{
   onLogout: () => void;
   onProfileSettingsOpen: () => void;
   notifications: Notification[];
+  isAdmin?: boolean;           // ADD THIS
+  onAdminPanelOpen?: () => void;  // ADD THIS
 }> = ({ 
   activeTab, 
   setActiveTab, 
@@ -1641,7 +1644,9 @@ const Header: React.FC<{
   onListCarClick,
   onLogout,
   onProfileSettingsOpen,
-  notifications
+  notifications,
+  isAdmin,              // ADD THIS
+  onAdminPanelOpen     // ADD THIS
 }) => {
   const unreadNotifications = notifications.filter(n => !n.read).length;
 
@@ -1683,11 +1688,23 @@ const Header: React.FC<{
             ))}
           </nav>
 
-          <div className="hidden lg:flex items-center space-x-4">
-            {user ? (
-              <div className="flex items-center space-x-4">
-                <div className="relative group">
-                  <button className="relative p-2.5 text-gray-600 hover:text-green-600 transition-colors hover:bg-green-50 rounded-xl">
+               <div className="hidden lg:flex items-center space-x-4">
+  {user ? (
+    <div className="flex items-center space-x-4">
+      {/* ADD THIS ADMIN BUTTON */}
+      {isAdmin && onAdminPanelOpen && (
+        <button
+          onClick={onAdminPanelOpen}
+          className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-800 text-white rounded-lg font-medium hover:shadow-lg transition-all flex items-center space-x-2"
+        >
+          <Shield className="w-4 h-4" />
+          <span>Admin</span>
+        </button>
+      )}
+      {/* END OF ADMIN BUTTON */}
+      
+      <div className="relative group">
+        <button className="relative p-2.5 text-gray-600 hover:text-green-600 transition-colors hover:bg-green-50 rounded-xl">
                     <Bell className="w-5 h-5" />
                     {unreadNotifications > 0 && (
                       <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
@@ -2275,6 +2292,7 @@ const NIGERIAN_CITIES = [
 ];
 
 // Main Enhanced Component
+const AdminDashboard = AdminPanel;
 const DriveMatePro: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('rent');
   const [menuOpen, setMenuOpen] = useState<boolean>(false);
@@ -2290,6 +2308,8 @@ const DriveMatePro: React.FC = () => {
     const savedUser = localStorage.getItem('user');
     return savedUser ? JSON.parse(savedUser) : null;
   });
+
+  const isAdmin = user?.email?.includes('admin') || user?.email === 'admin@naijadrive.ng';
 
   const [notifications, setNotifications] = useState<Notification[]>([
     {
@@ -2428,23 +2448,22 @@ const DriveMatePro: React.FC = () => {
     setSelectedCar(null);
   };
 
-  // Check if user is admin (for demo purposes)
-  const isAdmin = user?.email?.includes('admin') || user?.email === 'admin@naijadrive.ng';
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       <Header 
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        menuOpen={menuOpen}
-        setMenuOpen={setMenuOpen}
-        user={user}
-        onAuthModalOpen={() => setAuthModalOpen(true)}
-        onListCarClick={handleListCarClick}
-        onLogout={handleLogout}
-        onProfileSettingsOpen={() => setProfileModalOpen(true)}
-        notifications={notifications}
-      />
+  activeTab={activeTab}
+  setActiveTab={setActiveTab}
+  menuOpen={menuOpen}
+  setMenuOpen={setMenuOpen}
+  user={user}
+  onAuthModalOpen={() => setAuthModalOpen(true)}
+  onListCarClick={handleListCarClick}
+  onLogout={handleLogout}
+  onProfileSettingsOpen={() => setProfileModalOpen(true)}
+  notifications={notifications}
+  isAdmin={isAdmin}                              // ADD THIS
+  onAdminPanelOpen={() => setAdminPanelOpen(true)}  // ADD THIS
+/>
 
       {activeTab === 'rent' && (
         <>
@@ -2633,6 +2652,16 @@ const DriveMatePro: React.FC = () => {
           onBook={() => handleBookCar(selectedCar)}
         />
       )}
+
+      {adminPanelOpen && isAdmin && (
+  <AdminDashboard
+    user={user}
+    onClose={() => setAdminPanelOpen(false)}
+    stats={adminStats}
+    cars={searchResults}
+    trips={[]}
+  />
+)}
 
       {/* Footer */}
       <footer className="bg-gray-900 text-white pt-16 pb-8">
