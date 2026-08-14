@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client'
-import App from './components/User.tsx'
+import App from './components/DriveMateApp.jsx'
 import { StrictMode } from 'react'
 import './index.css'
 

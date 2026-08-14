@@ -1,549 +1,526 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
-  Search, Filter, CheckCircle, XCircle, AlertCircle,
-  MessageSquare, Eye, EyeOff, Clock, User, Car, Shield,
-  TrendingUp, DollarSign, Users, Calendar, MapPin, Star,
-  ChevronRight, ChevronLeft, Download, RefreshCw, MoreVertical,
-  Mail, Phone, MessageCircle, FileText, Camera, Image as ImageIcon,
-  Settings, LogOut, Bell, Home, BarChart, Package, CreditCard,
-  Zap, Users as UsersIcon, ShieldCheck, Settings as SettingsIcon
+  Search, CheckCircle, XCircle, AlertCircle, MessageSquare, Eye, Clock,
+  User, Car, ShieldCheck, TrendingUp, DollarSign, Users, Calendar, MapPin,
+  ChevronDown, Download, Bell, Home, BarChart3, FileText, Settings, LogOut,
+  Gauge, Radio, X, Fuel, Palette, Hash, Mail, Phone
 } from 'lucide-react';
+import {
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
+  BarChart, Bar
+} from 'recharts';
 
-// Types
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  location: string;
-  profileImage: string;
-  memberSince: string;
-  status: 'active' | 'pending' | 'suspended';
-  verificationLevel: 'basic' | 'verified' | 'premium';
-  lastActive: string;
-}
-
-interface CarListing {
-  id: string;
-  userId: string;
-  userName: string;
-  userEmail: string;
-  carName: string;
-  carType: string;
-  price: number;
-  location: string;
-  status: 'pending' | 'approved' | 'rejected' | 'needs_revision';
-  submittedDate: string;
-  images: {
-    front: string;
-    back: string;
-    side: string;
-    interior: string;
-    dashboard: string;
-  };
-  specifications: {
-    year: number;
-    fuelType: string;
-    engine: string;
-    mileage: string;
-    color: string;
-    registration: string;
-  };
-  adminComments: AdminComment[];
-  rejectionReason?: string;
-  verificationScore: number;
-}
-
-interface AdminComment {
-  id: string;
-  adminName: string;
-  message: string;
-  timestamp: string;
-  type: 'comment' | 'rejection' | 'approval';
-}
-
-interface Booking {
-  id: string;
-  userName: string;
-  carName: string;
-  dates: string;
-  total: number;
-  status: 'upcoming' | 'active' | 'completed' | 'cancelled';
-  bookingDate: string;
-}
-
-interface AdminStats {
-  totalListings: number;
-  pendingListings: number;
-  totalUsers: number;
-  newUsers: number;
-  totalBookings: number;
-  activeBookings: number;
-  revenue: number;
-  approvalRate: number;
-}
-
-// Notification System
-const AdminNotifications: React.FC = () => {
-  const [notifications, setNotifications] = useState([
-    {
-      id: '1',
-      type: 'new_listing' as const,
-      title: 'New Car Listing',
-      message: 'Toyota Camry 2023 submitted for review',
-      timestamp: '10 minutes ago',
-      read: false
-    },
-    {
-      id: '2',
-      type: 'user_signup' as const,
-      title: 'New User Registered',
-      message: 'John Doe registered as a new host',
-      timestamp: '2 hours ago',
-      read: false
-    },
-    {
-      id: '3',
-      type: 'booking' as const,
-      title: 'New Booking',
-      message: 'Mercedes C-Class booked for 5 days',
-      timestamp: '5 hours ago',
-      read: true
-    },
-    {
-      id: '4',
-      type: 'issue' as const,
-      title: 'Reported Issue',
-      message: 'User reported issue with booking #12345',
-      timestamp: '1 day ago',
-      read: true
+/* ---------------------------------------------------------------------
+   FONTS + GLOBAL FX
+   Space Grotesk = display/dashboard numerals, Inter = body, JetBrains Mono = data/plates
+--------------------------------------------------------------------- */
+const GlobalStyle = () => (
+  <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
+    .font-display { font-family: 'Space Grotesk', sans-serif; }
+    .font-mono2 { font-family: 'JetBrains Mono', monospace; }
+    .font-body { font-family: 'Inter', sans-serif; }
+    @keyframes pulseDot { 0%,100%{opacity:1} 50%{opacity:.35} }
+    .pulse-dot { animation: pulseDot 2s ease-in-out infinite; }
+    @keyframes slideIn { from{opacity:0; transform:translateX(16px)} to{opacity:1; transform:translateX(0)} }
+    .toast-in { animation: slideIn .25s ease-out; }
+    @keyframes scanline { 0%{transform:translateY(-100%)} 100%{transform:translateY(100%)} }
+    .scanline::after {
+      content:''; position:absolute; inset:0; pointer-events:none;
+      background: linear-gradient(180deg, transparent, rgba(34,211,238,0.08), transparent);
+      animation: scanline 3s linear infinite;
     }
-  ]);
+    ::-webkit-scrollbar { width: 8px; height:8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 8px; }
+  `}</style>
+);
 
-  const markAsRead = (id: string) => {
-    setNotifications(prev => prev.map(n => 
-      n.id === id ? { ...n, read: true } : n
-    ));
-  };
+/* ---------------------------------------------------------------------
+   SAMPLE DATA
+--------------------------------------------------------------------- */
+const initialListings = [
+  {
+    id: '1', userId: 'user1', userName: 'John Doe', userEmail: 'john@example.com',
+    carName: 'Toyota Camry 2023', carType: 'Executive Sedan', price: 35000,
+    location: 'Lagos, VI', status: 'pending', submittedDate: new Date().toISOString(),
+    images: {
+      front: 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=800&q=80',
+      back: 'https://images.unsplash.com/photo-1593941707882-a5bba53388fe?w=800&q=80',
+      side: 'https://images.unsplash.com/photo-1581540222194-0def2dda95b8?w=800&q=80',
+      interior: 'https://images.unsplash.com/photo-1555215695-3004980ad54e?w=800&q=80',
+      dashboard: 'https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?w=800&q=80'
+    },
+    specifications: { year: 2023, fuelType: 'Petrol', engine: '2.5L 4-cylinder', mileage: '15,000', color: 'Pearl White', registration: 'LAG-123-AB' },
+    adminComments: [], verificationScore: 85
+  },
+  {
+    id: '2', userId: 'user2', userName: 'Jane Smith', userEmail: 'jane@example.com',
+    carName: 'Mercedes-Benz C-Class 2022', carType: 'Luxury Sedan', price: 55000,
+    location: 'Abuja, Maitama', status: 'needs_revision', submittedDate: new Date(Date.now() - 86400000).toISOString(),
+    images: {
+      front: 'https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?w=800&q=80',
+      back: 'https://images.unsplash.com/photo-1593941707882-a5bba53388fe?w=800&q=80',
+      side: 'https://images.unsplash.com/photo-1581540222194-0def2dda95b8?w=800&q=80',
+      interior: 'https://images.unsplash.com/photo-1555215695-3004980ad54e?w=800&q=80',
+      dashboard: 'https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?w=800&q=80'
+    },
+    specifications: { year: 2022, fuelType: 'Petrol', engine: '2.0L Turbo', mileage: '25,000', color: 'Black', registration: 'ABJ-456-CD' },
+    adminComments: [
+      { id: '1', adminName: 'Admin User', message: 'Please provide clearer images of the interior', timestamp: '2024-01-15 10:30', type: 'comment' }
+    ], verificationScore: 70
+  },
+  {
+    id: '3', userId: 'user3', userName: 'Ade Coker', userEmail: 'ade@example.com',
+    carName: 'Lexus RX 350 2021', carType: 'SUV', price: 48000,
+    location: 'Port Harcourt', status: 'pending', submittedDate: new Date(Date.now() - 3600000).toISOString(),
+    images: {
+      front: 'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?w=800&q=80',
+      back: 'https://images.unsplash.com/photo-1493238792000-8113da705763?w=800&q=80',
+      side: 'https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?w=800&q=80',
+      interior: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=800&q=80',
+      dashboard: 'https://images.unsplash.com/photo-1600661653561-629509216228?w=800&q=80'
+    },
+    specifications: { year: 2021, fuelType: 'Petrol', engine: '3.5L V6', mileage: '32,000', color: 'Graphite', registration: 'PHC-789-EF' },
+    adminComments: [], verificationScore: 91
+  }
+];
 
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-  };
+const initialUsers = [
+  { id: '1', name: 'John Doe', email: 'john@example.com', phone: '+234 800 000 0001', location: 'Lagos', memberSince: '2024-01-01', status: 'active', verificationLevel: 'verified', lastActive: new Date().toISOString() },
+  { id: '2', name: 'Jane Smith', email: 'jane@example.com', phone: '+234 800 000 0002', location: 'Abuja', memberSince: '2024-01-05', status: 'pending', verificationLevel: 'basic', lastActive: new Date(Date.now() - 86400000).toISOString() },
+  { id: '3', name: 'Ade Coker', email: 'ade@example.com', phone: '+234 800 000 0003', location: 'Port Harcourt', memberSince: '2023-11-20', status: 'active', verificationLevel: 'premium', lastActive: new Date(Date.now() - 7200000).toISOString() }
+];
 
+const initialBookings = [
+  { id: 'B-1001', userName: 'Chidi Okafor', carName: 'Toyota Camry 2023', dates: 'Aug 14 – Aug 18', total: 140000, status: 'upcoming' },
+  { id: 'B-1002', userName: 'Fatima Bello', carName: 'Mercedes C-Class', dates: 'Aug 10 – Aug 15', total: 275000, status: 'active' },
+  { id: 'B-1003', userName: 'Emeka Nwosu', carName: 'Lexus RX 350', dates: 'Jul 28 – Aug 02', total: 240000, status: 'completed' },
+  { id: 'B-1004', userName: 'Grace Udo', carName: 'Honda Accord 2022', dates: 'Aug 05 – Aug 06', total: 32000, status: 'cancelled' }
+];
+
+const revenueTrend = [
+  { month: 'Mar', revenue: 8.2 }, { month: 'Apr', revenue: 9.6 }, { month: 'May', revenue: 10.1 },
+  { month: 'Jun', revenue: 11.8 }, { month: 'Jul', revenue: 13.4 }, { month: 'Aug', revenue: 15.6 }
+];
+const listingsByStatus = [
+  { name: 'Approved', count: 118 }, { name: 'Pending', count: 12 },
+  { name: 'Revision', count: 9 }, { name: 'Rejected', count: 17 }
+];
+
+/* ---------------------------------------------------------------------
+   PRIMITIVES
+--------------------------------------------------------------------- */
+const STATUS_MAP = {
+  pending: { label: 'PENDING', cls: 'text-amber-300 border-amber-500/40 bg-amber-500/10' },
+  approved: { label: 'APPROVED', cls: 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10' },
+  rejected: { label: 'REJECTED', cls: 'text-rose-300 border-rose-500/40 bg-rose-500/10' },
+  needs_revision: { label: 'REVISION', cls: 'text-cyan-300 border-cyan-500/40 bg-cyan-500/10' },
+  active: { label: 'ACTIVE', cls: 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10' },
+  upcoming: { label: 'UPCOMING', cls: 'text-cyan-300 border-cyan-500/40 bg-cyan-500/10' },
+  completed: { label: 'COMPLETED', cls: 'text-slate-300 border-slate-500/40 bg-slate-500/10' },
+  cancelled: { label: 'CANCELLED', cls: 'text-rose-300 border-rose-500/40 bg-rose-500/10' },
+  suspended: { label: 'SUSPENDED', cls: 'text-rose-300 border-rose-500/40 bg-rose-500/10' }
+};
+
+const StatusPlate = ({ status }) => {
+  const s = STATUS_MAP[status] || STATUS_MAP.pending;
   return (
-    <div className="relative">
-      <button className="relative p-2 hover:bg-gray-100 rounded-lg">
-        <Bell className="w-6 h-6 text-gray-600" />
-        {notifications.filter(n => !n.read).length > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-            {notifications.filter(n => !n.read).length}
-          </span>
-        )}
-      </button>
-      
-      <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg py-2 border border-gray-200 hidden group-hover:block z-50">
-        <div className="px-4 py-3 border-b border-gray-100">
-          <div className="flex justify-between items-center">
-            <p className="font-semibold text-gray-900">Notifications</p>
-            <button 
-              onClick={markAllAsRead}
-              className="text-sm text-blue-600 hover:text-blue-700"
-            >
-              Mark all as read
-            </button>
-          </div>
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-md border font-mono2 text-[10px] tracking-widest ${s.cls}`}>
+      {s.label}
+    </span>
+  );
+};
+
+const RadialGauge = ({ value, max = 100, label, colorClass = 'text-cyan-400', size = 108 }) => {
+  const stroke = 8;
+  const radius = size / 2 - stroke;
+  const circumference = 2 * Math.PI * radius;
+  const pct = Math.min(value / max, 1);
+  const offset = circumference * (1 - pct);
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} className="-rotate-90">
+          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="currentColor" strokeWidth={stroke} className="text-slate-800" />
+          <circle
+            cx={size / 2} cy={size / 2} r={radius} fill="none" strokeWidth={stroke} strokeLinecap="round"
+            stroke="currentColor" className={colorClass}
+            style={{ strokeDasharray: circumference, strokeDashoffset: offset, transition: 'stroke-dashoffset 1.2s ease' }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="font-mono2 text-xl font-semibold text-slate-50">{value}{max === 100 ? '%' : ''}</span>
         </div>
-        <div className="max-h-96 overflow-y-auto">
-          {notifications.map(notification => (
-            <div 
-              key={notification.id} 
-              className={`px-4 py-3 hover:bg-gray-50 cursor-pointer ${!notification.read ? 'bg-blue-50' : ''}`}
-              onClick={() => markAsRead(notification.id)}
-            >
-              <div className="flex items-start space-x-3">
-                <div className={`p-2 rounded-lg ${
-                  notification.type === 'new_listing' ? 'bg-green-100 text-green-600' :
-                  notification.type === 'user_signup' ? 'bg-blue-100 text-blue-600' :
-                  notification.type === 'booking' ? 'bg-purple-100 text-purple-600' :
-                  'bg-red-100 text-red-600'
-                }`}>
-                  {notification.type === 'new_listing' && <Car className="w-4 h-4" />}
-                  {notification.type === 'user_signup' && <User className="w-4 h-4" />}
-                  {notification.type === 'booking' && <Calendar className="w-4 h-4" />}
-                  {notification.type === 'issue' && <AlertCircle className="w-4 h-4" />}
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium text-gray-900">{notification.title}</p>
-                  <p className="text-sm text-gray-600 mt-1">{notification.message}</p>
-                  <p className="text-xs text-gray-400 mt-2">{notification.timestamp}</p>
-                </div>
-                {!notification.read && (
-                  <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-2"></div>
-                )}
-              </div>
-            </div>
-          ))}
+      </div>
+      <span className="text-[10px] uppercase tracking-widest text-slate-500 mt-2">{label}</span>
+    </div>
+  );
+};
+
+const StatCard = ({ title, value, change, icon, glow = 'cyan' }) => {
+  const glowMap = {
+    cyan: 'from-cyan-500/15 text-cyan-400',
+    indigo: 'from-indigo-500/15 text-indigo-400',
+    emerald: 'from-emerald-500/15 text-emerald-400',
+    amber: 'from-amber-500/15 text-amber-400'
+  };
+  const g = glowMap[glow];
+  return (
+    <div className="relative overflow-hidden bg-slate-900/70 border border-slate-800 rounded-xl p-5 hover:border-slate-700 transition-colors">
+      <div className={`absolute -top-8 -right-8 w-28 h-28 rounded-full bg-gradient-to-br ${g.split(' ')[0]} to-transparent blur-2xl`} />
+      <div className="relative flex items-start justify-between">
+        <div>
+          <p className="text-[11px] uppercase tracking-widest text-slate-500 font-body">{title}</p>
+          <p className="font-display text-2xl font-bold text-slate-50 mt-2">{value}</p>
+          <p className={`text-xs mt-2 font-mono2 ${change.startsWith('+') ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {change} · 30d
+          </p>
         </div>
-        <div className="border-t border-gray-100 px-4 py-3">
-          <button className="text-sm text-blue-600 hover:text-blue-700 w-full text-center">
-            View all notifications
-          </button>
+        <div className={`p-2.5 rounded-lg bg-slate-800/80 ${g.split(' ')[1]}`}>
+          {icon}
         </div>
       </div>
     </div>
   );
 };
 
-// Stats Cards Component
-const StatsCard: React.FC<{
-  title: string;
-  value: string | number;
-  change: string;
-  icon: React.ReactNode;
-  color: string;
-}> = ({ title, value, change, icon, color }) => (
-  <div className={`bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow`}>
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-sm text-gray-600">{title}</p>
-        <p className="text-3xl font-bold text-gray-900 mt-2">{value}</p>
-        <p className={`text-sm mt-2 ${change.startsWith('+') ? 'text-green-600' : 'text-red-600'}`}>
-          {change} from last month
-        </p>
+/* ---------------------------------------------------------------------
+   TOASTS
+--------------------------------------------------------------------- */
+const ToastStack = ({ toasts }) => (
+  <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-2 w-80">
+    {toasts.map(t => (
+      <div key={t.id} className={`toast-in flex items-start gap-3 px-4 py-3 rounded-lg border backdrop-blur-md shadow-lg ${
+        t.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/30 text-emerald-200' :
+        t.type === 'error' ? 'bg-rose-950/90 border-rose-500/30 text-rose-200' :
+        'bg-indigo-950/90 border-indigo-500/30 text-indigo-200'
+      }`}>
+        {t.type === 'success' ? <CheckCircle className="w-4 h-4 mt-0.5 flex-shrink-0" /> :
+         t.type === 'error' ? <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" /> :
+         <Radio className="w-4 h-4 mt-0.5 flex-shrink-0" />}
+        <p className="text-sm font-body">{t.message}</p>
       </div>
-      <div className={`p-3 rounded-lg ${color} bg-opacity-10`}>
-        {icon}
+    ))}
+  </div>
+);
+
+/* ---------------------------------------------------------------------
+   SIDEBAR
+--------------------------------------------------------------------- */
+const NAV_ITEMS = [
+  { id: 'dashboard', label: 'Overview', icon: BarChart3 },
+  { id: 'listings', label: 'Fleet Listings', icon: Car },
+  { id: 'users', label: 'Users', icon: Users },
+  { id: 'bookings', label: 'Bookings', icon: Calendar },
+  { id: 'reports', label: 'Reports', icon: FileText },
+  { id: 'settings', label: 'Settings', icon: Settings }
+];
+
+const Sidebar = ({ activeTab, setActiveTab, pendingCount }) => (
+  <aside className="hidden lg:flex flex-col w-64 flex-shrink-0 bg-slate-900/60 border-r border-slate-800 min-h-screen">
+    <div className="flex items-center gap-3 px-6 h-16 border-b border-slate-800">
+      <div className="relative">
+        <div className="w-9 h-9 rounded-lg bg-slate-950/40 border border-slate-800 flex items-center justify-center p-1">
+          <img src="/logo.png" alt="DriveMate" className="w-full h-full object-contain" />
+        </div>
+        <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-slate-900 pulse-dot" />
+      </div>
+      <div>
+        <p className="font-display font-bold text-slate-50 text-sm leading-tight">DRIVEMATE</p>
+        <p className="text-[10px] uppercase tracking-widest text-slate-500">Control Center</p>
+      </div>
+    </div>
+
+    <nav className="flex-1 px-3 py-6 space-y-1">
+      {NAV_ITEMS.map(item => {
+        const Icon = item.icon;
+        const active = activeTab === item.id;
+        return (
+          <button
+            key={item.id}
+            onClick={() => setActiveTab(item.id)}
+            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-body transition-all ${
+              active ? 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
+            }`}
+          >
+            <span className="flex items-center gap-3">
+              <Icon className="w-4 h-4" />
+              {item.label}
+            </span>
+            {item.id === 'listings' && pendingCount > 0 && (
+              <span className="text-[10px] font-mono2 bg-amber-500/15 text-amber-300 px-1.5 py-0.5 rounded">{pendingCount}</span>
+            )}
+          </button>
+        );
+      })}
+    </nav>
+
+    <div className="px-3 pb-6">
+      <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-4 relative overflow-hidden scanline">
+        <div className="flex items-center gap-2 text-emerald-400 mb-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot" />
+          <span className="text-[10px] uppercase tracking-widest font-mono2">System Online</span>
+        </div>
+        <p className="text-xs text-slate-500 font-body">All verification services operational.</p>
+      </div>
+    </div>
+  </aside>
+);
+
+/* ---------------------------------------------------------------------
+   TOPBAR
+--------------------------------------------------------------------- */
+const Topbar = ({ notifications, setNotifications, search, setSearch }) => {
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const unread = notifications.filter(n => !n.read).length;
+
+  const markAllRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+
+  return (
+    <header className="sticky top-0 z-40 h-16 bg-slate-950/80 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-4 lg:px-8">
+      <div className="relative w-full max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search listings, users, plates…"
+          className="w-full pl-10 pr-4 py-2 bg-slate-900/70 border border-slate-800 rounded-lg text-sm text-slate-200 placeholder-slate-500 font-body focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50"
+        />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <div className="relative">
+          <button
+            onClick={() => { setNotifOpen(v => !v); setProfileOpen(false); }}
+            className="relative p-2.5 hover:bg-slate-800/70 rounded-lg transition-colors"
+          >
+            <Bell className="w-5 h-5 text-slate-400" />
+            {unread > 0 && (
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full pulse-dot" />
+            )}
+          </button>
+
+          {notifOpen && (
+            <div className="absolute right-0 mt-2 w-80 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-50">
+              <div className="px-4 py-3 border-b border-slate-800 flex justify-between items-center">
+                <p className="font-display font-semibold text-slate-100 text-sm">Notifications</p>
+                <button onClick={markAllRead} className="text-xs text-indigo-400 hover:text-indigo-300 font-body">Mark all read</button>
+              </div>
+              <div className="max-h-80 overflow-y-auto">
+                {notifications.map(n => (
+                  <div key={n.id} className={`px-4 py-3 border-b border-slate-800/60 last:border-0 ${!n.read ? 'bg-indigo-500/5' : ''}`}>
+                    <p className="text-sm text-slate-200 font-body">{n.title}</p>
+                    <p className="text-xs text-slate-500 mt-0.5 font-body">{n.message}</p>
+                    <p className="text-[10px] text-slate-600 mt-1 font-mono2">{n.timestamp}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="relative">
+          <button
+            onClick={() => { setProfileOpen(v => !v); setNotifOpen(false); }}
+            className="flex items-center gap-2 pl-2 pr-3 py-1.5 hover:bg-slate-800/70 rounded-lg transition-colors"
+          >
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center text-slate-950 font-display font-bold text-sm">A</div>
+            <span className="hidden sm:block text-sm text-slate-300 font-body">Admin</span>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+          </button>
+          {profileOpen && (
+            <div className="absolute right-0 mt-2 w-44 bg-slate-900 border border-slate-800 rounded-lg shadow-2xl py-1.5 z-50">
+              <a href="#" className="flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800/70 font-body"><Settings className="w-4 h-4" />Settings</a>
+              <a href="/" className="flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800/70 font-body"><Home className="w-4 h-4" />Back to site</a>
+              <div className="border-t border-slate-800 my-1" />
+              <button className="flex items-center gap-2 w-full px-3 py-2 text-sm text-rose-400 hover:bg-rose-500/10 font-body"><LogOut className="w-4 h-4" />Log out</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+};
+
+/* ---------------------------------------------------------------------
+   LISTING CARD
+--------------------------------------------------------------------- */
+const SpecChip = ({ icon, children }) => (
+  <span className="inline-flex items-center gap-1.5 text-xs text-slate-400 font-body">
+    {icon}{children}
+  </span>
+);
+
+const ListingCard = ({ listing, onSelect, onApprove, onReject, onRequestRevision }) => (
+  <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden hover:border-indigo-500/40 transition-colors group">
+    <div className="relative h-40 overflow-hidden">
+      <img src={listing.images.front} alt={listing.carName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/10 to-transparent" />
+      <div className="absolute top-3 left-3"><StatusPlate status={listing.status} /></div>
+      <div className="absolute top-3 right-3 flex items-center gap-1 bg-slate-950/70 backdrop-blur px-2 py-1 rounded-md">
+        <Gauge className="w-3 h-3 text-cyan-400" />
+        <span className="font-mono2 text-[11px] text-cyan-300">{listing.verificationScore}</span>
+      </div>
+      <div className="absolute bottom-3 left-3">
+        <p className="font-display font-bold text-slate-50 text-lg leading-tight">{listing.carName}</p>
+        <p className="text-xs text-slate-300 font-body">{listing.carType}</p>
+      </div>
+    </div>
+
+    <div className="p-5">
+      <div className="flex items-center justify-between mb-4">
+        <span className="font-mono2 text-xl font-semibold text-slate-50">₦{listing.price.toLocaleString()}<span className="text-xs text-slate-500">/day</span></span>
+        <span className="font-mono2 text-[11px] text-slate-500 border border-slate-800 rounded px-1.5 py-0.5">{listing.specifications.registration}</span>
+      </div>
+
+      <div className="flex flex-wrap gap-x-4 gap-y-2 mb-4">
+        <SpecChip icon={<User className="w-3.5 h-3.5" />}>{listing.userName}</SpecChip>
+        <SpecChip icon={<MapPin className="w-3.5 h-3.5" />}>{listing.location}</SpecChip>
+        <SpecChip icon={<Fuel className="w-3.5 h-3.5" />}>{listing.specifications.fuelType}</SpecChip>
+        <SpecChip icon={<Clock className="w-3.5 h-3.5" />}>{new Date(listing.submittedDate).toLocaleDateString()}</SpecChip>
+      </div>
+
+      {listing.adminComments.length > 0 && (
+        <div className="mb-4 text-xs text-slate-400 bg-slate-950/60 border border-slate-800 rounded-lg p-3 font-body">
+          <span className="text-slate-500">Last note — </span>{listing.adminComments[listing.adminComments.length - 1].message}
+        </div>
+      )}
+
+      <div className="flex gap-2 pt-3 border-t border-slate-800">
+        <button onClick={() => onSelect(listing)} className="flex-1 px-3 py-2 border border-slate-700 text-slate-300 rounded-lg hover:bg-slate-800/60 transition-colors flex items-center justify-center gap-1.5 text-sm font-body">
+          <Eye className="w-4 h-4" /> Review
+        </button>
+        {listing.status === 'pending' && (
+          <>
+            <button onClick={() => onApprove(listing.id)} title="Approve" className="px-3 py-2 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-lg hover:bg-emerald-500/25 transition-colors"><CheckCircle className="w-4 h-4" /></button>
+            <button onClick={() => onRequestRevision(listing.id)} title="Request revision" className="px-3 py-2 bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 rounded-lg hover:bg-cyan-500/25 transition-colors"><MessageSquare className="w-4 h-4" /></button>
+            <button onClick={() => onReject(listing.id)} title="Reject" className="px-3 py-2 bg-rose-500/15 text-rose-400 border border-rose-500/30 rounded-lg hover:bg-rose-500/25 transition-colors"><XCircle className="w-4 h-4" /></button>
+          </>
+        )}
       </div>
     </div>
   </div>
 );
 
-// Listing Review Card Component
-const ListingReviewCard: React.FC<{
-  listing: CarListing;
-  onSelect: (listing: CarListing) => void;
-  onApprove: (id: string) => void;
-  onReject: (id: string) => void;
-  onRequestRevision: (id: string) => void;
-}> = ({ listing, onSelect, onApprove, onReject, onRequestRevision }) => {
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'approved': return 'bg-green-100 text-green-800';
-      case 'rejected': return 'bg-red-100 text-red-800';
-      case 'needs_revision': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow">
-      <div className="p-6">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <div className="flex items-center space-x-2 mb-2">
-              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(listing.status)}`}>
-                {listing.status.replace('_', ' ').toUpperCase()}
-              </span>
-              <span className="text-sm text-gray-500">Score: {listing.verificationScore}/100</span>
-            </div>
-            <h3 className="font-bold text-lg text-gray-900">{listing.carName}</h3>
-            <p className="text-sm text-gray-600">{listing.carType}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-2xl font-bold text-gray-900">₦{listing.price.toLocaleString()}<span className="text-sm text-gray-500">/day</span></p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <div className="flex items-center text-sm text-gray-600">
-            <User className="w-4 h-4 mr-2" />
-            <span>{listing.userName}</span>
-          </div>
-          <div className="flex items-center text-sm text-gray-600">
-            <MapPin className="w-4 h-4 mr-2" />
-            <span>{listing.location}</span>
-          </div>
-          <div className="flex items-center text-sm text-gray-600">
-            <Calendar className="w-4 h-4 mr-2" />
-            <span>Submitted: {new Date(listing.submittedDate).toLocaleDateString()}</span>
-          </div>
-          <div className="flex items-center text-sm text-gray-600">
-            <Shield className="w-4 h-4 mr-2" />
-            <span>Year: {listing.specifications.year}</span>
-          </div>
-        </div>
-
-        {/* Image Previews */}
-        <div className="grid grid-cols-5 gap-2 mb-6">
-          {Object.entries(listing.images).map(([key, url]) => (
-            <div key={key} className="relative aspect-square rounded-lg overflow-hidden bg-gray-100">
-              <img
-                src={url}
-                alt={`${key} view`}
-                className="w-full h-full object-cover hover:scale-110 transition-transform"
-              />
-              <div className="absolute inset-0 bg-black/0 hover:bg-black/10 transition-colors"></div>
-            </div>
-          ))}
-        </div>
-
-        {/* Admin Comments Preview */}
-        {listing.adminComments.length > 0 && (
-          <div className="mb-4">
-            <p className="text-sm font-medium text-gray-700 mb-2">Previous Comments:</p>
-            <div className="space-y-2">
-              {listing.adminComments.slice(0, 2).map(comment => (
-                <div key={comment.id} className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
-                  <div className="flex justify-between">
-                    <span className="font-medium">{comment.adminName}</span>
-                    <span className="text-xs text-gray-500">{comment.timestamp}</span>
-                  </div>
-                  <p className="mt-1">{comment.message}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        <div className="flex space-x-2 pt-4 border-t border-gray-100">
-          <button
-            onClick={() => onSelect(listing)}
-            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center"
-          >
-            <Eye className="w-4 h-4 mr-2" />
-            Review Details
-          </button>
-          
-          {listing.status === 'pending' && (
-            <>
-              <button
-                onClick={() => onApprove(listing.id)}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                title="Approve Listing"
-              >
-                <CheckCircle className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => onRequestRevision(listing.id)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                title="Request Revision"
-              >
-                <MessageSquare className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => onReject(listing.id)}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                title="Reject Listing"
-              >
-                <XCircle className="w-4 h-4" />
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Detailed Review Modal
-const ReviewModal: React.FC<{
-  listing: CarListing;
-  onClose: () => void;
-  onApprove: (id: string, comment?: string) => void;
-  onReject: (id: string, reason: string) => void;
-  onRequestRevision: (id: string, comment: string) => void;
-  onAddComment: (id: string, comment: string) => void;
-}> = ({ listing, onClose, onApprove, onReject, onRequestRevision, onAddComment }) => {
-  const [activeTab, setActiveTab] = useState('details');
+/* ---------------------------------------------------------------------
+   REVIEW MODAL
+--------------------------------------------------------------------- */
+const ReviewModal = ({ listing, onClose, onApprove, onReject, onRequestRevision, onAddComment }) => {
+  const [tab, setTab] = useState('details');
   const [rejectionReason, setRejectionReason] = useState('');
   const [revisionComment, setRevisionComment] = useState('');
   const [newComment, setNewComment] = useState('');
 
-  const handleAddComment = () => {
-    if (newComment.trim()) {
-      onAddComment(listing.id, newComment);
-      setNewComment('');
-    }
-  };
+  const specRows = [
+    { icon: <Calendar className="w-4 h-4" />, label: 'Year', value: listing.specifications.year },
+    { icon: <Fuel className="w-4 h-4" />, label: 'Fuel Type', value: listing.specifications.fuelType },
+    { icon: <Gauge className="w-4 h-4" />, label: 'Engine', value: listing.specifications.engine },
+    { icon: <TrendingUp className="w-4 h-4" />, label: 'Mileage', value: `${listing.specifications.mileage} km` },
+    { icon: <Palette className="w-4 h-4" />, label: 'Color', value: listing.specifications.color },
+    { icon: <Hash className="w-4 h-4" />, label: 'Plate', value: listing.specifications.registration }
+  ];
 
-  const handleReject = () => {
-    if (rejectionReason.trim()) {
-      onReject(listing.id, rejectionReason);
-      onClose();
-    }
-  };
-
-  const handleRequestRevision = () => {
-    if (revisionComment.trim()) {
-      onRequestRevision(listing.id, revisionComment);
-      onClose();
-    }
-  };
+  const checklist = [
+    { title: 'Vehicle documents verified', checked: true },
+    { title: 'Owner identity verified', checked: true },
+    { title: 'Insurance coverage valid', checked: false },
+    { title: 'All required images provided', checked: true },
+    { title: 'Price within market range', checked: true },
+    { title: 'No prohibited content in images', checked: true },
+    { title: 'Vehicle not reported stolen', checked: true },
+    { title: 'Registration details match', checked: false }
+  ];
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-gray-100 z-10 p-6">
-          <div className="flex justify-between items-center">
+    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-slate-900/95 backdrop-blur border-b border-slate-800 z-10 p-6">
+          <div className="flex justify-between items-start">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">Review Listing</h2>
-              <p className="text-gray-600">{listing.carName} • Submitted by {listing.userName}</p>
+              <p className="text-[10px] uppercase tracking-widest text-slate-500 font-mono2 mb-1">Listing Review</p>
+              <h2 className="font-display text-2xl font-bold text-slate-50">{listing.carName}</h2>
+              <p className="text-slate-400 text-sm font-body">Submitted by {listing.userName} · {listing.userEmail}</p>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
-              <XCircle className="w-5 h-5" />
-            </button>
+            <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-200"><X className="w-5 h-5" /></button>
           </div>
-          
-          <div className="flex space-x-1 mt-6 p-1 bg-gray-100 rounded-lg">
-            {['details', 'images', 'comments', 'verification'].map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 rounded-md font-medium capitalize transition-all ${
-                  activeTab === tab ? 'bg-white text-green-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                {tab}
+
+          <div className="flex gap-1 mt-6 p-1 bg-slate-950/60 border border-slate-800 rounded-lg w-fit">
+            {['details', 'images', 'comments', 'verification'].map(t => (
+              <button key={t} onClick={() => setTab(t)}
+                className={`px-4 py-2 rounded-md text-sm font-body capitalize transition-all ${tab === t ? 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30' : 'text-slate-400 hover:text-slate-200'}`}>
+                {t}
               </button>
             ))}
           </div>
         </div>
 
         <div className="p-6">
-          {activeTab === 'details' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {tab === 'details' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="space-y-6">
-                <div className="bg-gray-50 rounded-xl p-6">
-                  <h3 className="font-bold text-gray-900 mb-4">Car Specifications</h3>
+                <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-5">
+                  <h3 className="font-display font-semibold text-slate-100 mb-4 text-sm uppercase tracking-wide">Specifications</h3>
                   <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-sm text-gray-600">Year</p>
-                      <p className="font-medium">{listing.specifications.year}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Fuel Type</p>
-                      <p className="font-medium">{listing.specifications.fuelType}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Engine</p>
-                      <p className="font-medium">{listing.specifications.engine}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Mileage</p>
-                      <p className="font-medium">{listing.specifications.mileage} km</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Color</p>
-                      <p className="font-medium">{listing.specifications.color}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Registration</p>
-                      <p className="font-medium">{listing.specifications.registration}</p>
-                    </div>
+                    {specRows.map(r => (
+                      <div key={r.label} className="flex items-start gap-2">
+                        <span className="text-cyan-400 mt-0.5">{r.icon}</span>
+                        <div>
+                          <p className="text-[11px] text-slate-500 font-body">{r.label}</p>
+                          <p className="text-sm text-slate-200 font-mono2">{r.value}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
-                <div className="bg-gray-50 rounded-xl p-6">
-                  <h3 className="font-bold text-gray-900 mb-4">Owner Information</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <p className="text-sm text-gray-600">Name</p>
-                      <p className="font-medium">{listing.userName}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Email</p>
-                      <p className="font-medium">{listing.userEmail}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Location</p>
-                      <p className="font-medium">{listing.location}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Submitted Date</p>
-                      <p className="font-medium">{new Date(listing.submittedDate).toLocaleString()}</p>
-                    </div>
+                <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-5">
+                  <h3 className="font-display font-semibold text-slate-100 mb-4 text-sm uppercase tracking-wide">Owner</h3>
+                  <div className="space-y-3 text-sm font-body">
+                    <div className="flex items-center gap-2 text-slate-300"><User className="w-4 h-4 text-slate-500" />{listing.userName}</div>
+                    <div className="flex items-center gap-2 text-slate-300"><Mail className="w-4 h-4 text-slate-500" />{listing.userEmail}</div>
+                    <div className="flex items-center gap-2 text-slate-300"><MapPin className="w-4 h-4 text-slate-500" />{listing.location}</div>
+                    <div className="flex items-center gap-2 text-slate-300"><Clock className="w-4 h-4 text-slate-500" />{new Date(listing.submittedDate).toLocaleString()}</div>
                   </div>
                 </div>
               </div>
 
               <div className="space-y-6">
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
-                  <h3 className="font-bold text-gray-900 mb-4">Verification Score: {listing.verificationScore}/100</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span>Image Quality</span>
-                        <span>85%</span>
+                <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-5 flex items-center gap-6">
+                  <RadialGauge value={listing.verificationScore} label="Trust Score" colorClass={listing.verificationScore >= 80 ? 'text-emerald-400' : 'text-amber-400'} />
+                  <div className="flex-1 space-y-3">
+                    {[['Image quality', 85], ['Info completeness', 90], ['Price competitiveness', 75]].map(([label, val]) => (
+                      <div key={label}>
+                        <div className="flex justify-between text-xs text-slate-400 mb-1 font-body"><span>{label}</span><span className="font-mono2">{val}%</span></div>
+                        <div className="w-full bg-slate-800 rounded-full h-1.5">
+                          <div className="bg-gradient-to-r from-indigo-500 to-cyan-400 h-1.5 rounded-full" style={{ width: `${val}%` }} />
+                        </div>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div className="bg-green-500 h-2 rounded-full" style={{ width: '85%' }}></div>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span>Information Completeness</span>
-                        <span>90%</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div className="bg-green-500 h-2 rounded-full" style={{ width: '90%' }}></div>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span>Price Competitiveness</span>
-                        <span>75%</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div className="bg-yellow-500 h-2 rounded-full" style={{ width: '75%' }}></div>
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 </div>
 
-                <div className="bg-white border border-gray-200 rounded-xl p-6">
-                  <h3 className="font-bold text-gray-900 mb-4">Admin Actions</h3>
-                  <div className="space-y-4">
-                    <button
-                      onClick={() => onApprove(listing.id)}
-                      className="w-full py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors flex items-center justify-center"
-                    >
-                      <CheckCircle className="w-5 h-5 mr-2" />
-                      Approve Listing
+                <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-5">
+                  <h3 className="font-display font-semibold text-slate-100 mb-4 text-sm uppercase tracking-wide">Decision</h3>
+                  <div className="space-y-3">
+                    <button onClick={() => onApprove(listing.id)} className="w-full py-2.5 bg-emerald-500 text-slate-950 rounded-lg font-semibold hover:bg-emerald-400 transition-colors flex items-center justify-center gap-2 text-sm">
+                      <CheckCircle className="w-4 h-4" /> Approve listing
                     </button>
-                    
                     <div className="space-y-2">
-                      <textarea
-                        value={revisionComment}
-                        onChange={(e) => setRevisionComment(e.target.value)}
-                        placeholder="Add comments for revision request..."
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        rows={3}
-                      />
-                      <button
-                        onClick={handleRequestRevision}
-                        disabled={!revisionComment.trim()}
-                        className="w-full py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Request Revision
+                      <textarea value={revisionComment} onChange={e => setRevisionComment(e.target.value)} placeholder="What needs to change?" rows={2}
+                        className="w-full px-3 py-2.5 bg-slate-900 border border-slate-800 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500/40 focus:outline-none font-body" />
+                      <button onClick={() => { if (revisionComment.trim()) { onRequestRevision(listing.id, revisionComment); onClose(); } }} disabled={!revisionComment.trim()}
+                        className="w-full py-2 bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 rounded-lg text-sm font-medium hover:bg-cyan-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                        Request revision
                       </button>
                     </div>
-
                     <div className="space-y-2">
-                      <textarea
-                        value={rejectionReason}
-                        onChange={(e) => setRejectionReason(e.target.value)}
-                        placeholder="Reason for rejection..."
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                        rows={3}
-                      />
-                      <button
-                        onClick={handleReject}
-                        disabled={!rejectionReason.trim()}
-                        className="w-full py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Reject Listing
+                      <textarea value={rejectionReason} onChange={e => setRejectionReason(e.target.value)} placeholder="Reason for rejection" rows={2}
+                        className="w-full px-3 py-2.5 bg-slate-900 border border-slate-800 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:ring-2 focus:ring-rose-500/40 focus:border-rose-500/40 focus:outline-none font-body" />
+                      <button onClick={() => { if (rejectionReason.trim()) { onReject(listing.id, rejectionReason); onClose(); } }} disabled={!rejectionReason.trim()}
+                        className="w-full py-2 bg-rose-500/15 text-rose-300 border border-rose-500/30 rounded-lg text-sm font-medium hover:bg-rose-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                        Reject listing
                       </button>
                     </div>
                   </div>
@@ -552,124 +529,59 @@ const ReviewModal: React.FC<{
             </div>
           )}
 
-          {activeTab === 'images' && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {Object.entries(listing.images).map(([key, url]) => (
-                  <div key={key} className="bg-gray-50 rounded-xl overflow-hidden">
-                    <div className="p-4 border-b border-gray-200">
-                      <h4 className="font-medium text-gray-900 capitalize">{key} View</h4>
-                    </div>
-                    <div className="p-4">
-                      <img
-                        src={url}
-                        alt={`${key} view`}
-                        className="w-full h-64 object-cover rounded-lg"
-                      />
-                      <div className="flex space-x-2 mt-4">
-                        <button className="px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-300">
-                          <Eye className="w-4 h-4 inline mr-1" />
-                          View Full Size
-                        </button>
-                        <button className="px-3 py-1.5 bg-red-100 text-red-700 text-sm rounded-lg hover:bg-red-200">
-                          <AlertCircle className="w-4 h-4 inline mr-1" />
-                          Flag Issue
-                        </button>
-                      </div>
-                    </div>
+          {tab === 'images' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {Object.entries(listing.images).map(([key, url]) => (
+                <div key={key} className="bg-slate-950/60 border border-slate-800 rounded-xl overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-slate-800">
+                    <p className="text-xs uppercase tracking-widest text-slate-400 font-mono2">{key}</p>
+                  </div>
+                  <img src={url} alt={key} className="w-full h-56 object-cover" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {tab === 'comments' && (
+            <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-5">
+              <h3 className="font-display font-semibold text-slate-100 mb-4 text-sm uppercase tracking-wide">Admin Comments</h3>
+              <div className="space-y-3 mb-6">
+                {listing.adminComments.length === 0 && <p className="text-sm text-slate-500 font-body">No comments yet.</p>}
+                {listing.adminComments.map(c => (
+                  <div key={c.id} className="border-l-2 border-indigo-500/50 pl-3 py-1">
+                    <div className="flex justify-between text-xs text-slate-500 font-mono2"><span>{c.adminName}</span><span>{c.timestamp}</span></div>
+                    <p className="text-sm text-slate-200 mt-1 font-body">{c.message}</p>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {activeTab === 'comments' && (
-            <div className="space-y-6">
-              <div className="bg-white border border-gray-200 rounded-xl p-6">
-                <h3 className="font-bold text-gray-900 mb-4">Admin Comments</h3>
-                
-                <div className="space-y-4 mb-6">
-                  {listing.adminComments.map(comment => (
-                    <div key={comment.id} className="border-l-4 border-blue-500 pl-4 py-2">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="font-medium text-gray-900">{comment.adminName}</p>
-                          <p className="text-sm text-gray-500">{comment.type}</p>
-                        </div>
-                        <span className="text-sm text-gray-500">{comment.timestamp}</span>
-                      </div>
-                      <p className="mt-2 text-gray-700">{comment.message}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-3">Add New Comment</h4>
-                  <div className="space-y-3">
-                    <textarea
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="Add your comment here..."
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      rows={4}
-                    />
-                    <div className="flex justify-end">
-                      <button
-                        onClick={handleAddComment}
-                        disabled={!newComment.trim()}
-                        className="px-6 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Add Comment
-                      </button>
-                    </div>
-                  </div>
-                </div>
+              <textarea value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="Add a comment…" rows={3}
+                className="w-full px-3 py-2.5 bg-slate-900 border border-slate-800 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:ring-2 focus:ring-indigo-500/40 focus:outline-none font-body" />
+              <div className="flex justify-end mt-2">
+                <button onClick={() => { if (newComment.trim()) { onAddComment(listing.id, newComment); setNewComment(''); } }} disabled={!newComment.trim()}
+                  className="px-5 py-2 bg-indigo-500 text-white rounded-lg text-sm font-medium hover:bg-indigo-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  Add comment
+                </button>
               </div>
             </div>
           )}
 
-          {activeTab === 'verification' && (
-            <div className="space-y-6">
-              <div className="bg-white border border-gray-200 rounded-xl p-6">
-                <h3 className="font-bold text-gray-900 mb-6">Verification Checklist</h3>
-                
-                <div className="space-y-4">
-                  {[
-                    { id: 1, title: 'Vehicle Documents Verified', checked: true },
-                    { id: 2, title: 'Owner Identity Verified', checked: true },
-                    { id: 3, title: 'Insurance Coverage Valid', checked: false },
-                    { id: 4, title: 'All Required Images Provided', checked: true },
-                    { id: 5, title: 'Price Within Market Range', checked: true },
-                    { id: 6, title: 'No Prohibited Content in Images', checked: true },
-                    { id: 7, title: 'Vehicle Not Reported Stolen', checked: true },
-                    { id: 8, title: 'Registration Details Match', checked: false },
-                  ].map(item => (
-                    <div key={item.id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={item.checked}
-                          className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
-                          readOnly
-                        />
-                        <span className="ml-3 text-gray-700">{item.title}</span>
-                      </div>
-                      {item.checked ? (
-                        <CheckCircle className="w-5 h-5 text-green-500" />
-                      ) : (
-                        <AlertCircle className="w-5 h-5 text-yellow-500" />
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-8 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <h4 className="font-medium text-yellow-800 mb-2">Pending Items</h4>
-                  <ul className="list-disc list-inside text-yellow-700 text-sm space-y-1">
-                    <li>Insurance document verification required</li>
-                    <li>Registration number needs verification with authorities</li>
-                  </ul>
-                </div>
+          {tab === 'verification' && (
+            <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-5">
+              <h3 className="font-display font-semibold text-slate-100 mb-4 text-sm uppercase tracking-wide">Verification Checklist</h3>
+              <div className="space-y-1">
+                {checklist.map(item => (
+                  <div key={item.title} className="flex items-center justify-between px-3 py-2.5 hover:bg-slate-900 rounded-lg">
+                    <span className="text-sm text-slate-300 font-body">{item.title}</span>
+                    {item.checked ? <CheckCircle className="w-4 h-4 text-emerald-400" /> : <AlertCircle className="w-4 h-4 text-amber-400" />}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-5 p-4 bg-amber-500/10 border border-amber-500/25 rounded-lg">
+                <p className="text-xs uppercase tracking-widest text-amber-300 font-mono2 mb-2">Outstanding</p>
+                <ul className="text-sm text-amber-200/90 space-y-1 font-body list-disc list-inside">
+                  <li>Insurance document verification required</li>
+                  <li>Registration number needs verification with authorities</li>
+                </ul>
               </div>
             </div>
           )}
@@ -679,47 +591,34 @@ const ReviewModal: React.FC<{
   );
 };
 
-// User Management Component
-const UserManagement: React.FC<{
-  users: User[];
-  onUserAction: (userId: string, action: string) => void;
-}> = ({ users, onUserAction }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === 'all' || user.status === filterStatus;
-    return matchesSearch && matchesStatus;
+/* ---------------------------------------------------------------------
+   USER MANAGEMENT
+--------------------------------------------------------------------- */
+const UserManagement = ({ users, onUserAction }) => {
+  const [q, setQ] = useState('');
+  const [status, setStatus] = useState('all');
+  const filtered = users.filter(u => {
+    const matchQ = u.name.toLowerCase().includes(q.toLowerCase()) || u.email.toLowerCase().includes(q.toLowerCase());
+    const matchS = status === 'all' || u.status === status;
+    return matchQ && matchS;
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h3 className="text-lg font-bold text-gray-900">User Management</h3>
-          <p className="text-gray-600">Manage user accounts and permissions</p>
+          <h3 className="font-display text-lg font-bold text-slate-50">User Management</h3>
+          <p className="text-slate-500 text-sm font-body">Manage renter and host accounts</p>
         </div>
-        
-        <div className="flex space-x-3">
+        <div className="flex gap-3">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search users..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent w-64"
-            />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search users…"
+              className="pl-9 pr-4 py-2 bg-slate-900/70 border border-slate-800 rounded-lg text-sm text-slate-200 placeholder-slate-500 w-56 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 font-body" />
           </div>
-          
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-          >
-            <option value="all">All Status</option>
+          <select value={status} onChange={e => setStatus(e.target.value)}
+            className="px-3 py-2 bg-slate-900/70 border border-slate-800 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 font-body">
+            <option value="all">All status</option>
             <option value="active">Active</option>
             <option value="pending">Pending</option>
             <option value="suspended">Suspended</option>
@@ -727,822 +626,343 @@ const UserManagement: React.FC<{
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Verification</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Active</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {filteredUsers.map(user => (
-                <tr key={user.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center">
-                      <div className="h-10 w-10 flex-shrink-0">
-                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-green-500 to-green-700 flex items-center justify-center text-white font-semibold">
-                          {user.profileImage ? (
-                            <img src={user.profileImage} alt={user.name} className="h-10 w-10 rounded-full" />
-                          ) : (
-                            user.name.charAt(0)
-                          )}
-                        </div>
-                      </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">{user.name}</div>
-                        <div className="text-sm text-gray-500">{user.email}</div>
-                        <div className="text-sm text-gray-500">{user.phone}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      user.status === 'active' ? 'bg-green-100 text-green-800' :
-                      user.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      {user.status.charAt(0).toUpperCase() + user.status.slice(1)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      user.verificationLevel === 'premium' ? 'bg-purple-100 text-purple-800' :
-                      user.verificationLevel === 'verified' ? 'bg-blue-100 text-blue-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {user.verificationLevel}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    {new Date(user.memberSince).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    {new Date(user.lastActive).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => onUserAction(user.id, 'verify')}
-                        className="text-green-600 hover:text-green-900"
-                        title="Verify User"
-                      >
-                        <CheckCircle className="w-5 h-5" />
-                      </button>
-                      <button
-                        onClick={() => onUserAction(user.id, 'suspend')}
-                        className="text-red-600 hover:text-red-900"
-                        title="Suspend User"
-                      >
-                        <XCircle className="w-5 h-5" />
-                      </button>
-                      <button
-                        onClick={() => onUserAction(user.id, 'message')}
-                        className="text-blue-600 hover:text-blue-900"
-                        title="Message User"
-                      >
-                        <MessageSquare className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+      <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-950/60">
+            <tr>
+              {['User', 'Status', 'Tier', 'Joined', 'Last active', 'Actions'].map(h => (
+                <th key={h} className="px-5 py-3 text-left text-[10px] uppercase tracking-widest text-slate-500 font-mono2">{h}</th>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-800">
+            {filtered.map(u => (
+              <tr key={u.id} className="hover:bg-slate-800/30">
+                <td className="px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center text-slate-950 font-display font-bold text-sm">{u.name.charAt(0)}</div>
+                    <div>
+                      <p className="text-slate-200 font-body">{u.name}</p>
+                      <p className="text-slate-500 text-xs font-body">{u.email}</p>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-5 py-4"><StatusPlate status={u.status} /></td>
+                <td className="px-5 py-4">
+                  <span className={`text-xs font-mono2 px-2 py-1 rounded border ${
+                    u.verificationLevel === 'premium' ? 'text-indigo-300 border-indigo-500/40 bg-indigo-500/10' :
+                    u.verificationLevel === 'verified' ? 'text-cyan-300 border-cyan-500/40 bg-cyan-500/10' :
+                    'text-slate-400 border-slate-700 bg-slate-800/40'
+                  }`}>{u.verificationLevel}</span>
+                </td>
+                <td className="px-5 py-4 text-slate-400 font-body">{new Date(u.memberSince).toLocaleDateString()}</td>
+                <td className="px-5 py-4 text-slate-400 font-body">{new Date(u.lastActive).toLocaleDateString()}</td>
+                <td className="px-5 py-4">
+                  <div className="flex gap-3">
+                    <button onClick={() => onUserAction(u.id, 'verify')} title="Verify" className="text-emerald-400 hover:text-emerald-300"><CheckCircle className="w-4 h-4" /></button>
+                    <button onClick={() => onUserAction(u.id, 'suspend')} title="Suspend" className="text-rose-400 hover:text-rose-300"><XCircle className="w-4 h-4" /></button>
+                    <button onClick={() => onUserAction(u.id, 'message')} title="Message" className="text-indigo-400 hover:text-indigo-300"><MessageSquare className="w-4 h-4" /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
 };
 
-// Main Admin Dashboard Component
-const AdminDashboard: React.FC = () => {
+/* ---------------------------------------------------------------------
+   SETTINGS TOGGLE
+--------------------------------------------------------------------- */
+const Toggle = ({ checked, onChange }) => (
+  <button onClick={() => onChange(!checked)} className={`relative w-12 h-7 rounded-full transition-colors ${checked ? 'bg-indigo-500' : 'bg-slate-700'}`}>
+    <span className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${checked ? 'translate-x-5' : ''}`} />
+  </button>
+);
+
+/* ---------------------------------------------------------------------
+   MAIN DASHBOARD
+--------------------------------------------------------------------- */
+export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [selectedListing, setSelectedListing] = useState<CarListing | null>(null);
-  const [listings, setListings] = useState<CarListing[]>([
-    {
-      id: '1',
-      userId: 'user1',
-      userName: 'John Doe',
-      userEmail: 'john@example.com',
-      carName: 'Toyota Camry 2023',
-      carType: 'Executive Sedan',
-      price: 35000,
-      location: 'Lagos, VI',
-      status: 'pending',
-      submittedDate: new Date().toISOString(),
-      images: {
-        front: 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=800&q=80',
-        back: 'https://images.unsplash.com/photo-1593941707882-a5bba53388fe?w=800&q=80',
-        side: 'https://images.unsplash.com/photo-1581540222194-0def2dda95b8?w=800&q=80',
-        interior: 'https://images.unsplash.com/photo-1555215695-3004980ad54e?w=800&q=80',
-        dashboard: 'https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?w=800&q=80'
-      },
-      specifications: {
-        year: 2023,
-        fuelType: 'Petrol',
-        engine: '2.5L 4-cylinder',
-        mileage: '15,000 km',
-        color: 'Pearl White',
-        registration: 'LAG-123-AB'
-      },
-      adminComments: [],
-      verificationScore: 85
-    },
-    {
-      id: '2',
-      userId: 'user2',
-      userName: 'Jane Smith',
-      userEmail: 'jane@example.com',
-      carName: 'Mercedes-Benz C-Class 2022',
-      carType: 'Luxury Sedan',
-      price: 55000,
-      location: 'Abuja, Maitama',
-      status: 'needs_revision',
-      submittedDate: new Date(Date.now() - 86400000).toISOString(),
-      images: {
-        front: 'https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?w=800&q=80',
-        back: 'https://images.unsplash.com/photo-1593941707882-a5bba53388fe?w=800&q=80',
-        side: 'https://images.unsplash.com/photo-1581540222194-0def2dda95b8?w=800&q=80',
-        interior: 'https://images.unsplash.com/photo-1555215695-3004980ad54e?w=800&q=80',
-        dashboard: 'https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?w=800&q=80'
-      },
-      specifications: {
-        year: 2022,
-        fuelType: 'Petrol',
-        engine: '2.0L Turbo',
-        mileage: '25,000 km',
-        color: 'Black',
-        registration: 'ABJ-456-CD'
-      },
-      adminComments: [
-        {
-          id: '1',
-          adminName: 'Admin User',
-          message: 'Please provide clearer images of the interior',
-          timestamp: '2024-01-15 10:30:00',
-          type: 'comment'
-        }
-      ],
-      verificationScore: 70
-    }
+  const [selectedListing, setSelectedListing] = useState(null);
+  const [listings, setListings] = useState(initialListings);
+  const [users, setUsers] = useState(initialUsers);
+  const [bookings] = useState(initialBookings);
+  const [search, setSearch] = useState('');
+  const [toasts, setToasts] = useState([]);
+  const [autoApprove, setAutoApprove] = useState(false);
+  const [emailNotifs, setEmailNotifs] = useState(true);
+  const [smsAlerts, setSmsAlerts] = useState(false);
+  const [minScore, setMinScore] = useState(80);
+
+  const [notifications, setNotifications] = useState([
+    { id: '1', title: 'New Car Listing', message: 'Toyota Camry 2023 submitted for review', timestamp: '10 min ago', read: false },
+    { id: '2', title: 'New User Registered', message: 'John Doe registered as a new host', timestamp: '2 hr ago', read: false },
+    { id: '3', title: 'New Booking', message: 'Mercedes C-Class booked for 5 days', timestamp: '5 hr ago', read: true },
+    { id: '4', title: 'Reported Issue', message: 'User reported issue with booking #12345', timestamp: '1 day ago', read: true }
   ]);
 
-  const [users, setUsers] = useState<User[]>([
-    {
-      id: '1',
-      name: 'John Doe',
-      email: 'john@example.com',
-      phone: '+234 800 000 0001',
-      location: 'Lagos',
-      profileImage: '',
-      memberSince: '2024-01-01',
-      status: 'active',
-      verificationLevel: 'verified',
-      lastActive: new Date().toISOString()
-    },
-    {
-      id: '2',
-      name: 'Jane Smith',
-      email: 'jane@example.com',
-      phone: '+234 800 000 0002',
-      location: 'Abuja',
-      profileImage: '',
-      memberSince: '2024-01-05',
-      status: 'pending',
-      verificationLevel: 'basic',
-      lastActive: new Date(Date.now() - 86400000).toISOString()
-    }
-  ]);
-
-  const [stats] = useState<AdminStats>({
-    totalListings: 156,
-    pendingListings: 12,
-    totalUsers: 2450,
-    newUsers: 45,
-    totalBookings: 892,
-    activeBookings: 78,
-    revenue: 15600000,
-    approvalRate: 92
-  });
-
-  const handleApproveListing = (id: string, comment?: string) => {
-    setListings(prev => prev.map(listing => {
-      if (listing.id === id) {
-        const newComment: AdminComment = {
-          id: Date.now().toString(),
-          adminName: 'Admin User',
-          message: comment || 'Listing approved',
-          timestamp: new Date().toISOString(),
-          type: 'approval'
-        };
-        
-        return {
-          ...listing,
-          status: 'approved',
-          adminComments: [...listing.adminComments, newComment]
-        };
-      }
-      return listing;
-    }));
-    
-    if (selectedListing?.id === id) {
-      setSelectedListing(null);
-    }
-    
-    alert('Listing approved successfully!');
+  const pushToast = (message, type = 'success') => {
+    const id = Date.now() + Math.random();
+    setToasts(t => [...t, { id, message, type }]);
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3500);
   };
 
-  const handleRejectListing = (id: string, reason: string) => {
-    setListings(prev => prev.map(listing => {
-      if (listing.id === id) {
-        const newComment: AdminComment = {
-          id: Date.now().toString(),
-          adminName: 'Admin User',
-          message: `Rejected: ${reason}`,
-          timestamp: new Date().toISOString(),
-          type: 'rejection'
-        };
-        
-        return {
-          ...listing,
-          status: 'rejected',
-          adminComments: [...listing.adminComments, newComment],
-          rejectionReason: reason
-        };
-      }
-      return listing;
-    }));
-    
-    alert('Listing rejected. User has been notified.');
+  const stats = { totalListings: 156, pendingListings: listings.filter(l => l.status === 'pending').length, totalUsers: 2450, newUsers: 45, activeBookings: bookings.filter(b => b.status === 'active').length, revenue: 15600000, approvalRate: 92 };
+
+  const handleApproveListing = (id, comment) => {
+    setListings(prev => prev.map(l => l.id === id ? { ...l, status: 'approved', adminComments: [...l.adminComments, { id: Date.now().toString(), adminName: 'Admin User', message: comment || 'Listing approved', timestamp: new Date().toISOString(), type: 'approval' }] } : l));
+    if (selectedListing?.id === id) setSelectedListing(null);
+    pushToast('Listing approved successfully.', 'success');
   };
 
-  const handleRequestRevision = (id: string, comment: string) => {
-    setListings(prev => prev.map(listing => {
-      if (listing.id === id) {
-        const newComment: AdminComment = {
-          id: Date.now().toString(),
-          adminName: 'Admin User',
-          message: `Revision requested: ${comment}`,
-          timestamp: new Date().toISOString(),
-          type: 'comment'
-        };
-        
-        return {
-          ...listing,
-          status: 'needs_revision',
-          adminComments: [...listing.adminComments, newComment]
-        };
-      }
-      return listing;
-    }));
-    
-    alert('Revision requested. User has been notified.');
+  const handleRejectListing = (id, reason) => {
+    setListings(prev => prev.map(l => l.id === id ? { ...l, status: 'rejected', rejectionReason: reason, adminComments: [...l.adminComments, { id: Date.now().toString(), adminName: 'Admin User', message: `Rejected: ${reason}`, timestamp: new Date().toISOString(), type: 'rejection' }] } : l));
+    pushToast('Listing rejected. User notified.', 'error');
   };
 
-  const handleAddComment = (id: string, comment: string) => {
-    setListings(prev => prev.map(listing => {
-      if (listing.id === id) {
-        const newComment: AdminComment = {
-          id: Date.now().toString(),
-          adminName: 'Admin User',
-          message: comment,
-          timestamp: new Date().toISOString(),
-          type: 'comment'
-        };
-        
-        return {
-          ...listing,
-          adminComments: [...listing.adminComments, newComment]
-        };
-      }
-      return listing;
-    }));
-    
-    if (selectedListing?.id === id) {
-      setSelectedListing(prev => prev ? {
-        ...prev,
-        adminComments: [...prev.adminComments, {
-          id: Date.now().toString(),
-          adminName: 'Admin User',
-          message: comment,
-          timestamp: new Date().toISOString(),
-          type: 'comment'
-        }]
-      } : null);
-    }
-    
-    alert('Comment added successfully!');
+  const handleRequestRevision = (id, comment) => {
+    setListings(prev => prev.map(l => l.id === id ? { ...l, status: 'needs_revision', adminComments: [...l.adminComments, { id: Date.now().toString(), adminName: 'Admin User', message: `Revision requested: ${comment}`, timestamp: new Date().toISOString(), type: 'comment' }] } : l));
+    pushToast('Revision requested. User notified.', 'info');
   };
 
-  const handleUserAction = (userId: string, action: string) => {
-    switch (action) {
-      case 'verify':
-        setUsers(prev => prev.map(user => 
-          user.id === userId 
-            ? { ...user, verificationLevel: 'verified', status: 'active' }
-            : user
-        ));
-        alert('User verified successfully!');
-        break;
-      case 'suspend':
-        setUsers(prev => prev.map(user => 
-          user.id === userId 
-            ? { ...user, status: 'suspended' }
-            : user
-        ));
-        alert('User suspended!');
-        break;
-      case 'message':
-        // Open messaging interface
-        alert('Open messaging interface for user');
-        break;
+  const handleAddComment = (id, comment) => {
+    const newComment = { id: Date.now().toString(), adminName: 'Admin User', message: comment, timestamp: new Date().toISOString(), type: 'comment' };
+    setListings(prev => prev.map(l => l.id === id ? { ...l, adminComments: [...l.adminComments, newComment] } : l));
+    if (selectedListing?.id === id) setSelectedListing(prev => ({ ...prev, adminComments: [...prev.adminComments, newComment] }));
+    pushToast('Comment added.', 'success');
+  };
+
+  const handleUserAction = (userId, action) => {
+    if (action === 'verify') {
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, verificationLevel: 'verified', status: 'active' } : u));
+      pushToast('User verified.', 'success');
+    } else if (action === 'suspend') {
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'suspended' } : u));
+      pushToast('User suspended.', 'error');
+    } else {
+      pushToast('Messaging interface would open here.', 'info');
     }
   };
 
-  const pendingListings = listings.filter(l => l.status === 'pending');
-  const needsRevisionListings = listings.filter(l => l.status === 'needs_revision');
+  const pendingListings = useMemo(() => listings.filter(l => l.status === 'pending'), [listings]);
+  const revisionListings = useMemo(() => listings.filter(l => l.status === 'needs_revision'), [listings]);
+  const filteredAllListings = useMemo(() => listings.filter(l =>
+    l.carName.toLowerCase().includes(search.toLowerCase()) || l.userName.toLowerCase().includes(search.toLowerCase())
+  ), [listings, search]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Top Navigation */}
-      <nav className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-3">
-              <div className="relative">
-                <ShieldCheck className="w-8 h-8 text-green-600" />
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-600 rounded-full"></div>
-              </div>
+    <div className="min-h-screen bg-slate-950 font-body flex">
+      <GlobalStyle />
+      <ToastStack toasts={toasts} />
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} pendingCount={stats.pendingListings} />
+
+      <div className="flex-1 min-w-0">
+        <Topbar notifications={notifications} setNotifications={setNotifications} search={search} setSearch={setSearch} />
+
+        <main className="px-4 lg:px-8 py-8 max-w-7xl mx-auto">
+          {/* mobile tab bar */}
+          <div className="flex lg:hidden gap-2 overflow-x-auto mb-6 pb-1">
+            {NAV_ITEMS.map(item => (
+              <button key={item.id} onClick={() => setActiveTab(item.id)}
+                className={`px-4 py-2 rounded-lg text-sm whitespace-nowrap font-body ${activeTab === item.id ? 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30' : 'text-slate-400 border border-slate-800'}`}>
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          {activeTab === 'dashboard' && (
+            <div className="space-y-10">
               <div>
-                <span className="text-xl font-bold bg-gradient-to-r from-green-600 to-green-800 bg-clip-text text-transparent">
-                  Admin Dashboard
-                </span>
-                <div className="flex items-center space-x-1 mt-[-4px]">
-                  <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse"></div>
-                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Control Panel</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-4">
-              <AdminNotifications />
-              
-              <div className="relative group">
-                <button className="flex items-center space-x-3 px-3 py-2 hover:bg-gray-50 rounded-lg transition-all">
-                  <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-700 rounded-lg flex items-center justify-center text-white font-semibold">
-                    A
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm font-medium text-gray-900">Admin User</p>
-                    <p className="text-xs text-gray-500">Administrator</p>
-                  </div>
-                </button>
-                
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2 hidden group-hover:block border border-gray-200 z-50">
-                  <a href="#" className="flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                    <SettingsIcon className="w-4 h-4" />
-                    <span>Settings</span>
-                  </a>
-                  <a href="/" className="flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                    <Home className="w-4 h-4" />
-                    <span>Back to Site</span>
-                  </a>
-                  <div className="border-t my-1"></div>
-                  <button className="flex items-center space-x-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50">
-                    <LogOut className="w-4 h-4" />
-                    <span>Logout</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <StatsCard
-            title="Pending Listings"
-            value={stats.pendingListings}
-            change="+2"
-            icon={<AlertCircle className="w-6 h-6 text-yellow-600" />}
-            color="text-yellow-600"
-          />
-          <StatsCard
-            title="Total Revenue"
-            value={`₦${(stats.revenue / 1000000).toFixed(1)}M`}
-            change="+15%"
-            icon={<DollarSign className="w-6 h-6 text-green-600" />}
-            color="text-green-600"
-          />
-          <StatsCard
-            title="New Users"
-            value={stats.newUsers}
-            change="+8"
-            icon={<Users className="w-6 h-6 text-blue-600" />}
-            color="text-blue-600"
-          />
-          <StatsCard
-            title="Approval Rate"
-            value={`${stats.approvalRate}%`}
-            change="+3%"
-            icon={<TrendingUp className="w-6 h-6 text-purple-600" />}
-            color="text-purple-600"
-          />
-        </div>
-
-        {/* Tab Navigation */}
-        <div className="flex space-x-1 bg-white rounded-xl border border-gray-200 p-1 mb-8">
-          {['dashboard', 'listings', 'users', 'bookings', 'reports', 'settings'].map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-6 py-3 rounded-lg font-medium capitalize transition-all flex items-center space-x-2 ${
-                activeTab === tab
-                  ? 'bg-green-600 text-white'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-              }`}
-            >
-              {tab === 'dashboard' && <BarChart className="w-4 h-4" />}
-              {tab === 'listings' && <Car className="w-4 h-4" />}
-              {tab === 'users' && <Users className="w-4 h-4" />}
-              {tab === 'bookings' && <Calendar className="w-4 h-4" />}
-              {tab === 'reports' && <FileText className="w-4 h-4" />}
-              {tab === 'settings' && <Settings className="w-4 h-4" />}
-              <span>{tab}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Main Content Area */}
-        {activeTab === 'dashboard' && (
-          <div className="space-y-8">
-            {/* Pending Listings Section */}
-            <div>
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold text-gray-900">Pending Listings ({pendingListings.length})</h2>
-                <button className="px-4 py-2 text-sm text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors">
-                  View All →
-                </button>
-              </div>
-              
-              {pendingListings.length > 0 ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {pendingListings.map(listing => (
-                    <ListingReviewCard
-                      key={listing.id}
-                      listing={listing}
-                      onSelect={setSelectedListing}
-                      onApprove={handleApproveListing}
-                      onReject={handleRejectListing}
-                      onRequestRevision={handleRequestRevision}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-                  <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Pending Listings</h3>
-                  <p className="text-gray-600">All listings have been reviewed and processed.</p>
-                </div>
-              )}
-            </div>
-
-            {/* Needs Revision Section */}
-            <div>
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold text-gray-900">Needs Revision ({needsRevisionListings.length})</h2>
-                <button className="px-4 py-2 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors">
-                  View All →
-                </button>
-              </div>
-              
-              {needsRevisionListings.length > 0 ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {needsRevisionListings.map(listing => (
-                    <ListingReviewCard
-                      key={listing.id}
-                      listing={listing}
-                      onSelect={setSelectedListing}
-                      onApprove={handleApproveListing}
-                      onReject={handleRejectListing}
-                      onRequestRevision={handleRequestRevision}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-                  <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Revisions Required</h3>
-                  <p className="text-gray-600">All listings meet the required standards.</p>
-                </div>
-              )}
-            </div>
-
-            {/* Quick Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
-                <h3 className="font-bold text-gray-900 mb-4">Recent Activity</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="p-2 bg-green-100 rounded-lg">
-                        <CheckCircle className="w-4 h-4 text-green-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">Listing Approved</p>
-                        <p className="text-xs text-gray-500">Toyota Camry 2023</p>
-                      </div>
-                    </div>
-                    <span className="text-xs text-gray-500">10 min ago</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="p-2 bg-blue-100 rounded-lg">
-                        <MessageSquare className="w-4 h-4 text-blue-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">Revision Requested</p>
-                        <p className="text-xs text-gray-500">Mercedes C-Class</p>
-                      </div>
-                    </div>
-                    <span className="text-xs text-gray-500">1 hour ago</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="p-2 bg-purple-100 rounded-lg">
-                        <User className="w-4 h-4 text-purple-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">New User Registered</p>
-                        <p className="text-xs text-gray-500">John Smith</p>
-                      </div>
-                    </div>
-                    <span className="text-xs text-gray-500">2 hours ago</span>
-                  </div>
-                </div>
+                <p className="text-[11px] uppercase tracking-widest text-cyan-400 font-mono2 mb-1">Fleet status · Live</p>
+                <h1 className="font-display text-3xl font-bold text-slate-50">Overview</h1>
               </div>
 
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
-                <h3 className="font-bold text-gray-900 mb-4">Verification Queue</h3>
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span>Pending Listings</span>
-                      <span>{pendingListings.length}</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-yellow-500 h-2 rounded-full" 
-                        style={{ width: `${(pendingListings.length / 20) * 100}%` }}
-                      ></div>
-                    </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+                <StatCard title="Pending Listings" value={stats.pendingListings} change="+2" icon={<AlertCircle className="w-5 h-5" />} glow="amber" />
+                <StatCard title="Total Revenue" value={`₦${(stats.revenue / 1000000).toFixed(1)}M`} change="+15%" icon={<DollarSign className="w-5 h-5" />} glow="emerald" />
+                <StatCard title="New Users" value={stats.newUsers} change="+8" icon={<Users className="w-5 h-5" />} glow="indigo" />
+                <StatCard title="Active Bookings" value={stats.activeBookings} change="+4" icon={<Calendar className="w-5 h-5" />} glow="cyan" />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <div className="lg:col-span-2 bg-slate-900/60 border border-slate-800 rounded-xl p-6">
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="font-display font-bold text-slate-100">Pending Listings ({pendingListings.length})</h2>
+                    <button onClick={() => setActiveTab('listings')} className="text-xs text-indigo-400 hover:text-indigo-300 font-body">View all →</button>
                   </div>
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span>Needs Revision</span>
-                      <span>{needsRevisionListings.length}</span>
+                  {pendingListings.length > 0 ? (
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                      {pendingListings.map(l => (
+                        <ListingCard key={l.id} listing={l} onSelect={setSelectedListing} onApprove={handleApproveListing} onReject={id => handleRejectListing(id, 'Quality issues')} onRequestRevision={id => handleRequestRevision(id, 'Please review submission')} />
+                      ))}
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-blue-500 h-2 rounded-full" 
-                        style={{ width: `${(needsRevisionListings.length / 20) * 100}%` }}
-                      ></div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
+                      <p className="text-slate-300 font-body">Queue clear — nothing pending review.</p>
                     </div>
+                  )}
+                </div>
+
+                <div className="space-y-5">
+                  <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 flex flex-col items-center">
+                    <h3 className="font-display font-semibold text-slate-100 text-sm mb-4 self-start uppercase tracking-wide">Approval Rate</h3>
+                    <RadialGauge value={stats.approvalRate} label="Approved" colorClass="text-emerald-400" size={128} />
                   </div>
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span>Approval Rate</span>
-                      <span>{stats.approvalRate}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-green-500 h-2 rounded-full" 
-                        style={{ width: `${stats.approvalRate}%` }}
-                      ></div>
+
+                  <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6">
+                    <h3 className="font-display font-semibold text-slate-100 text-sm mb-4 uppercase tracking-wide">Quick Actions</h3>
+                    <div className="space-y-2.5">
+                      <button onClick={() => pushToast('Batch approve queued.', 'success')} className="w-full py-2.5 bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 rounded-lg text-sm font-medium hover:bg-emerald-500/25 flex items-center gap-2 px-3"><CheckCircle className="w-4 h-4" />Batch approve selected</button>
+                      <button onClick={() => pushToast('Export started — check downloads shortly.', 'info')} className="w-full py-2.5 bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 rounded-lg text-sm font-medium hover:bg-indigo-500/25 flex items-center gap-2 px-3"><Download className="w-4 h-4" />Export reports</button>
+                      <button onClick={() => setActiveTab('settings')} className="w-full py-2.5 bg-slate-800/60 text-slate-300 border border-slate-700 rounded-lg text-sm font-medium hover:bg-slate-800 flex items-center gap-2 px-3"><Settings className="w-4 h-4" />System settings</button>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
-                <h3 className="font-bold text-gray-900 mb-4">Quick Actions</h3>
-                <div className="space-y-3">
-                  <button className="w-full px-4 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors text-left flex items-center">
-                    <CheckCircle className="w-5 h-5 mr-3" />
-                    Batch Approve Selected
-                  </button>
-                  <button className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors text-left flex items-center">
-                    <Download className="w-5 h-5 mr-3" />
-                    Export Reports
-                  </button>
-                  <button className="w-full px-4 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors text-left flex items-center">
-                    <Settings className="w-5 h-5 mr-3" />
-                    System Settings
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'listings' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+              {revisionListings.length > 0 && (
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">All Listings</h3>
-                  <p className="text-gray-600">Manage and review all car listings</p>
-                </div>
-                
-                <div className="flex space-x-3">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Search listings..."
-                      className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent w-64"
-                    />
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="font-display font-bold text-slate-100">Needs Revision ({revisionListings.length})</h2>
                   </div>
-                  
-                  <select className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent">
-                    <option>All Status</option>
-                    <option>Pending</option>
-                    <option>Approved</option>
-                    <option>Rejected</option>
-                    <option>Needs Revision</option>
-                  </select>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    {revisionListings.map(l => (
+                      <ListingCard key={l.id} listing={l} onSelect={setSelectedListing} onApprove={handleApproveListing} onReject={id => handleRejectListing(id, 'Quality issues')} onRequestRevision={id => handleRequestRevision(id, 'Please review submission')} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'listings' && (
+            <div className="space-y-6">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                  <h1 className="font-display text-2xl font-bold text-slate-50">Fleet Listings</h1>
+                  <p className="text-slate-500 text-sm font-body">{filteredAllListings.length} listings</p>
                 </div>
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                {filteredAllListings.map(l => (
+                  <ListingCard key={l.id} listing={l} onSelect={setSelectedListing} onApprove={handleApproveListing} onReject={id => handleRejectListing(id, 'Quality issues')} onRequestRevision={id => handleRequestRevision(id, 'Please review submission')} />
+                ))}
+              </div>
+            </div>
+          )}
 
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
+          {activeTab === 'users' && <UserManagement users={users} onUserAction={handleUserAction} />}
+
+          {activeTab === 'bookings' && (
+            <div className="space-y-6">
+              <h1 className="font-display text-2xl font-bold text-slate-50">Bookings</h1>
+              <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-950/60">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Car</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Submitted</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      {['Booking', 'Renter', 'Vehicle', 'Dates', 'Total', 'Status'].map(h => (
+                        <th key={h} className="px-5 py-3 text-left text-[10px] uppercase tracking-widest text-slate-500 font-mono2">{h}</th>
+                      ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {listings.map(listing => (
-                      <tr key={listing.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center">
-                            <img
-                              src={listing.images.front}
-                              alt={listing.carName}
-                              className="w-12 h-12 rounded-lg object-cover"
-                            />
-                            <div className="ml-4">
-                              <div className="text-sm font-medium text-gray-900">{listing.carName}</div>
-                              <div className="text-sm text-gray-500">{listing.carType}</div>
-                              <div className="text-sm text-gray-500">{listing.location}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-gray-900">{listing.userName}</div>
-                          <div className="text-sm text-gray-500">{listing.userEmail}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm font-medium text-gray-900">₦{listing.price.toLocaleString()}/day</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            listing.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                            listing.status === 'approved' ? 'bg-green-100 text-green-800' :
-                            listing.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                            'bg-blue-100 text-blue-800'
-                          }`}>
-                            {listing.status.replace('_', ' ')}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
-                          {new Date(listing.submittedDate).toLocaleDateString()}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex space-x-2">
-                            <button
-                              onClick={() => setSelectedListing(listing)}
-                              className="text-blue-600 hover:text-blue-900"
-                              title="Review"
-                            >
-                              <Eye className="w-5 h-5" />
-                            </button>
-                            {listing.status === 'pending' && (
-                              <>
-                                <button
-                                  onClick={() => handleApproveListing(listing.id)}
-                                  className="text-green-600 hover:text-green-900"
-                                  title="Approve"
-                                >
-                                  <CheckCircle className="w-5 h-5" />
-                                </button>
-                                <button
-                                  onClick={() => handleRejectListing(listing.id, 'Quality issues')}
-                                  className="text-red-600 hover:text-red-900"
-                                  title="Reject"
-                                >
-                                  <XCircle className="w-5 h-5" />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </td>
+                  <tbody className="divide-y divide-slate-800">
+                    {bookings.map(b => (
+                      <tr key={b.id} className="hover:bg-slate-800/30">
+                        <td className="px-5 py-4 font-mono2 text-cyan-300">{b.id}</td>
+                        <td className="px-5 py-4 text-slate-200 font-body">{b.userName}</td>
+                        <td className="px-5 py-4 text-slate-300 font-body">{b.carName}</td>
+                        <td className="px-5 py-4 text-slate-400 font-body">{b.dates}</td>
+                        <td className="px-5 py-4 font-mono2 text-slate-200">₦{b.total.toLocaleString()}</td>
+                        <td className="px-5 py-4"><StatusPlate status={b.status} /></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {activeTab === 'users' && (
-          <UserManagement users={users} onUserAction={handleUserAction} />
-        )}
-
-        {activeTab === 'settings' && (
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-6">Admin Settings</h3>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div className="space-y-6">
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-4">Listing Approval Settings</h4>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm text-gray-700 mb-2">Auto-approval for verified users</label>
-                      <div className="relative">
-                        <input type="checkbox" id="autoApprove" className="sr-only" />
-                        <label
-                          htmlFor="autoApprove"
-                          className="block w-14 h-8 bg-green-600 rounded-full cursor-pointer"
-                        >
-                          <div className="dot absolute left-7 top-1 bg-white w-6 h-6 rounded-full"></div>
-                        </label>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm text-gray-700 mb-2">Minimum verification score for auto-approval</label>
-                      <input
-                        type="range"
-                        min="50"
-                        max="100"
-                        defaultValue="80"
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                      />
-                      <div className="flex justify-between text-sm text-gray-500 mt-2">
-                        <span>50%</span>
-                        <span className="font-medium">80%</span>
-                        <span>100%</span>
-                      </div>
-                    </div>
-                  </div>
+          {activeTab === 'reports' && (
+            <div className="space-y-6">
+              <h1 className="font-display text-2xl font-bold text-slate-50">Reports</h1>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6">
+                  <h3 className="font-display font-semibold text-slate-100 text-sm mb-4 uppercase tracking-wide">Revenue trend (₦M)</h3>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <AreaChart data={revenueTrend}>
+                      <defs>
+                        <linearGradient id="rev" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.4} />
+                          <stop offset="100%" stopColor="#22d3ee" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="month" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                      <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, fontSize: 12 }} labelStyle={{ color: '#e2e8f0' }} />
+                      <Area type="monotone" dataKey="revenue" stroke="#22d3ee" strokeWidth={2} fill="url(#rev)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </div>
-              </div>
-
-              <div className="space-y-6">
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-4">Notification Settings</h4>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-700">Email notifications for new listings</span>
-                      <div className="relative">
-                        <input type="checkbox" defaultChecked className="sr-only" />
-                        <div className="block w-14 h-8 bg-green-600 rounded-full"></div>
-                        <div className="dot absolute left-7 top-1 bg-white w-6 h-6 rounded-full"></div>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-700">SMS alerts for high-priority issues</span>
-                      <div className="relative">
-                        <input type="checkbox" className="sr-only" />
-                        <div className="block w-14 h-8 bg-gray-300 rounded-full"></div>
-                        <div className="dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full"></div>
-                      </div>
-                    </div>
-                  </div>
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6">
+                  <h3 className="font-display font-semibold text-slate-100 text-sm mb-4 uppercase tracking-wide">Listings by status</h3>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={listingsByStatus}>
+                      <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                      <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, fontSize: 12 }} labelStyle={{ color: '#e2e8f0' }} cursor={{ fill: '#1e293b' }} />
+                      <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+
+          {activeTab === 'settings' && (
+            <div className="space-y-6 max-w-3xl">
+              <h1 className="font-display text-2xl font-bold text-slate-50">Settings</h1>
+              <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 space-y-6">
+                <h3 className="font-display font-semibold text-slate-100 text-sm uppercase tracking-wide">Listing Approval</h3>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-200 font-body">Auto-approve verified users</p>
+                    <p className="text-xs text-slate-500 font-body">Skip manual review for premium-tier hosts</p>
+                  </div>
+                  <Toggle checked={autoApprove} onChange={setAutoApprove} />
+                </div>
+                <div>
+                  <div className="flex justify-between text-sm text-slate-300 mb-2 font-body">
+                    <span>Minimum verification score for auto-approval</span>
+                    <span className="font-mono2 text-cyan-300">{minScore}%</span>
+                  </div>
+                  <input type="range" min="50" max="100" value={minScore} onChange={e => setMinScore(Number(e.target.value))}
+                    className="w-full accent-indigo-500" />
+                </div>
+              </div>
+
+              <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 space-y-5">
+                <h3 className="font-display font-semibold text-slate-100 text-sm uppercase tracking-wide">Notifications</h3>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-slate-200 font-body">Email alerts for new listings</p>
+                  <Toggle checked={emailNotifs} onChange={setEmailNotifs} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-slate-200 font-body">SMS alerts for high-priority issues</p>
+                  <Toggle checked={smsAlerts} onChange={setSmsAlerts} />
+                </div>
+              </div>
+            </div>
+          )}
+        </main>
       </div>
 
-      {/* Review Modal */}
       {selectedListing && (
         <ReviewModal
           listing={selectedListing}
@@ -1555,6 +975,4 @@ const AdminDashboard: React.FC = () => {
       )}
     </div>
   );
-};
-
-export default AdminDashboard;
+}
